@@ -13,6 +13,7 @@ static PREFIX_REWARD: &[u8] = b"reward";
 pub struct Config {
     pub anchor_token: CanonicalAddr,
     pub staking_token: CanonicalAddr,
+    pub owner_address: CanonicalAddr,
     pub distribution_schedule: Vec<(u64, u64, Uint128)>,
 }
 

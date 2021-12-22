@@ -206,10 +206,8 @@ pub fn migrate_staking(
     let mut state: State = read_state(deps.storage)?;
     let anc_token: Addr = deps.api.addr_humanize(&config.anchor_token)?;
 
-    // get gov address by querying anc token minter
-    let gov_addr_raw: CanonicalAddr = deps
-        .api
-        .addr_canonicalize(&query_anc_minter(&deps.querier, anc_token.clone())?)?;
+    // get gov address by querying owner address
+    let gov_addr_raw: CanonicalAddr = config.owner_address;
     if sender_addr_raw != gov_addr_raw {
         return Err(StdError::generic_err("unauthorized"));
     }
