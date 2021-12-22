@@ -11,12 +11,9 @@ use xdefi_token::staking::{
     StakerInfoResponse, StateResponse,
 };
 
-use crate::{
-    querier::query_anc_minter,
-    state::{
-        read_config, read_staker_info, read_state, remove_staker_info, store_config,
-        store_staker_info, store_state, Config, StakerInfo, State,
-    },
+use crate::state::{
+    read_config, read_staker_info, read_state, remove_staker_info, store_config, store_staker_info,
+    store_state, Config, StakerInfo, State,
 };
 
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
@@ -25,7 +22,7 @@ use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 pub fn instantiate(
     deps: DepsMut,
     env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: InstantiateMsg,
 ) -> StdResult<Response> {
     store_config(
@@ -59,6 +56,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         ExecuteMsg::MigrateStaking {
             new_staking_contract,
         } => migrate_staking(deps, env, info, new_staking_contract),
+        ExecuteMsg::ChangeOwner { new_owner_address } => {
+            change_owner(deps, env, info, new_owner_address)
+        }
     }
 }
 
@@ -200,7 +200,7 @@ pub fn change_owner(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    new_owner: CanonicalAddr,
+    new_owner: String,
 ) -> StdResult<Response> {
     let sender_addr_raw: CanonicalAddr = deps.api.addr_canonicalize(info.sender.as_str())?;
     let mut state: State = read_state(deps.storage)?;
@@ -211,7 +211,7 @@ pub fn change_owner(
         return Err(StdError::generic_err("unauthorized"));
     }
 
-    state.owner_address = new_owner;
+    state.owner_address = deps.api.addr_canonicalize(&new_owner)?;
     // update state with new owner address
     store_state(deps.storage, &state)?;
 
@@ -232,7 +232,7 @@ pub fn migrate_staking(
     let anc_token: Addr = deps.api.addr_humanize(&config.xdefi_token)?;
 
     // get gov address by querying owner address
-    let gov_addr_raw: CanonicalAddr = state.owner_address;
+    let gov_addr_raw: CanonicalAddr = state.owner_address.clone();
     if sender_addr_raw != gov_addr_raw {
         return Err(StdError::generic_err("unauthorized"));
     }
@@ -379,6 +379,7 @@ pub fn query_state(deps: Deps, block_height: Option<u64>) -> StdResult<StateResp
         last_distributed: state.last_distributed,
         total_bond_amount: state.total_bond_amount,
         global_reward_index: state.global_reward_index,
+        owner_address: state.owner_address,
     })
 }
 

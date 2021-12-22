@@ -25,6 +25,10 @@ pub enum ExecuteMsg {
     MigrateStaking {
         new_staking_contract: String,
     },
+
+    ChangeOwner {
+        new_owner_address: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -64,6 +68,7 @@ pub struct StateResponse {
     pub last_distributed: u64,
     pub total_bond_amount: Uint128,
     pub global_reward_index: Decimal,
+    pub owner_address: CanonicalAddr,
 }
 
 // We define a custom struct for each query response
