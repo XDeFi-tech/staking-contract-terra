@@ -1,9 +1,9 @@
 [package]
-name = "anchor-staking"
+name = "xdefi-staking"
 version = "0.0.0"
 authors = ["Terraform Labs, PTE."]
 edition = "2018"
-description = "A Staking contract for Anchor Protocol - distribute rewards to stakers"
+description = "A Staking contract for XDefi Token, forked from Anchor Protocol - distribute rewards to stakers"
 license = "Apache-2.0"
 
 exclude = [
