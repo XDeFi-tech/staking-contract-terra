@@ -31,10 +31,9 @@ pub fn instantiate(
     store_config(
         deps.storage,
         &Config {
-            anchor_token: deps.api.addr_canonicalize(&msg.anchor_token)?,
+            xdefi_token: deps.api.addr_canonicalize(&msg.xdefi_token)?,
             staking_token: deps.api.addr_canonicalize(&msg.staking_token)?,
             distribution_schedule: msg.distribution_schedule,
-            owner_address: deps.api.addr_canonicalize(info.sender.as_str())?,
         },
     )?;
 
@@ -44,6 +43,7 @@ pub fn instantiate(
             last_distributed: env.block.height,
             total_bond_amount: Uint128::zero(),
             global_reward_index: Decimal::zero(),
+            owner_address: deps.api.addr_canonicalize(info.sender.as_str())?,
         },
     )?;
 
@@ -182,7 +182,7 @@ pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> StdResult<Respons
 
     Ok(Response::new()
         .add_messages(vec![CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: deps.api.addr_humanize(&config.anchor_token)?.to_string(),
+            contract_addr: deps.api.addr_humanize(&config.xdefi_token)?.to_string(),
             msg: to_binary(&Cw20ExecuteMsg::Transfer {
                 recipient: info.sender.to_string(),
                 amount,
@@ -196,6 +196,30 @@ pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> StdResult<Respons
         ]))
 }
 
+pub fn change_owner(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    new_owner: CanonicalAddr,
+) -> StdResult<Response> {
+    let sender_addr_raw: CanonicalAddr = deps.api.addr_canonicalize(info.sender.as_str())?;
+    let mut state: State = read_state(deps.storage)?;
+
+    // get gov address by querying owner address
+    let gov_addr_raw: CanonicalAddr = state.owner_address;
+    if sender_addr_raw != gov_addr_raw {
+        return Err(StdError::generic_err("unauthorized"));
+    }
+
+    state.owner_address = new_owner;
+    // update state with new owner address
+    store_state(deps.storage, &state)?;
+
+    Ok(Response::new()
+        .add_attribute("method", "change_owner")
+        .add_attribute("new_owner", new_owner.to_string()))
+}
+
 pub fn migrate_staking(
     deps: DepsMut,
     env: Env,
@@ -205,10 +229,10 @@ pub fn migrate_staking(
     let sender_addr_raw: CanonicalAddr = deps.api.addr_canonicalize(info.sender.as_str())?;
     let mut config: Config = read_config(deps.storage)?;
     let mut state: State = read_state(deps.storage)?;
-    let anc_token: Addr = deps.api.addr_humanize(&config.anchor_token)?;
+    let anc_token: Addr = deps.api.addr_humanize(&config.xdefi_token)?;
 
     // get gov address by querying owner address
-    let gov_addr_raw: CanonicalAddr = config.owner_address;
+    let gov_addr_raw: CanonicalAddr = state.owner_address;
     if sender_addr_raw != gov_addr_raw {
         return Err(StdError::generic_err("unauthorized"));
     }
@@ -336,7 +360,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 pub fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
     let state = read_config(deps.storage)?;
     let resp = ConfigResponse {
-        anchor_token: deps.api.addr_humanize(&state.anchor_token)?.to_string(),
+        xdefi_token: deps.api.addr_humanize(&state.xdefi_token)?.to_string(),
         staking_token: deps.api.addr_humanize(&state.staking_token)?.to_string(),
         distribution_schedule: state.distribution_schedule,
     };
