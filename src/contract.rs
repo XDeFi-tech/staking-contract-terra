@@ -6,17 +6,14 @@ use cosmwasm_std::{
     MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
 };
 
-use anchor_token::staking::{
+use xdefi_token::staking::{
     ConfigResponse, Cw20HookMsg, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg,
     StakerInfoResponse, StateResponse,
 };
 
-use crate::{
-    querier::query_anc_minter,
-    state::{
-        read_config, read_staker_info, read_state, remove_staker_info, store_config,
-        store_staker_info, store_state, Config, StakerInfo, State,
-    },
+use crate::state::{
+    read_config, read_staker_info, read_state, remove_staker_info, store_config, store_staker_info,
+    store_state, Config, StakerInfo, State,
 };
 
 use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
@@ -25,13 +22,13 @@ use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 pub fn instantiate(
     deps: DepsMut,
     env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: InstantiateMsg,
 ) -> StdResult<Response> {
     store_config(
         deps.storage,
         &Config {
-            anchor_token: deps.api.addr_canonicalize(&msg.anchor_token)?,
+            xdefi_token: deps.api.addr_canonicalize(&msg.xdefi_token)?,
             staking_token: deps.api.addr_canonicalize(&msg.staking_token)?,
             distribution_schedule: msg.distribution_schedule,
         },
@@ -43,6 +40,7 @@ pub fn instantiate(
             last_distributed: env.block.height,
             total_bond_amount: Uint128::zero(),
             global_reward_index: Decimal::zero(),
+            owner_address: deps.api.addr_canonicalize(info.sender.as_str())?,
         },
     )?;
 
@@ -58,6 +56,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         ExecuteMsg::MigrateStaking {
             new_staking_contract,
         } => migrate_staking(deps, env, info, new_staking_contract),
+        ExecuteMsg::ChangeOwner { new_owner_address } => {
+            change_owner(deps, env, info, new_owner_address)
+        }
     }
 }
 
@@ -181,7 +182,7 @@ pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> StdResult<Respons
 
     Ok(Response::new()
         .add_messages(vec![CosmosMsg::Wasm(WasmMsg::Execute {
-            contract_addr: deps.api.addr_humanize(&config.anchor_token)?.to_string(),
+            contract_addr: deps.api.addr_humanize(&config.xdefi_token)?.to_string(),
             msg: to_binary(&Cw20ExecuteMsg::Transfer {
                 recipient: info.sender.to_string(),
                 amount,
@@ -195,6 +196,30 @@ pub fn withdraw(deps: DepsMut, env: Env, info: MessageInfo) -> StdResult<Respons
         ]))
 }
 
+pub fn change_owner(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    new_owner: String,
+) -> StdResult<Response> {
+    let sender_addr_raw: CanonicalAddr = deps.api.addr_canonicalize(info.sender.as_str())?;
+    let mut state: State = read_state(deps.storage)?;
+
+    // get gov address by querying owner address
+    let gov_addr_raw: CanonicalAddr = state.owner_address;
+    if sender_addr_raw != gov_addr_raw {
+        return Err(StdError::generic_err("unauthorized"));
+    }
+
+    state.owner_address = deps.api.addr_canonicalize(&new_owner)?;
+    // update state with new owner address
+    store_state(deps.storage, &state)?;
+
+    Ok(Response::new()
+        .add_attribute("method", "change_owner")
+        .add_attribute("new_owner", new_owner.to_string()))
+}
+
 pub fn migrate_staking(
     deps: DepsMut,
     env: Env,
@@ -204,12 +229,10 @@ pub fn migrate_staking(
     let sender_addr_raw: CanonicalAddr = deps.api.addr_canonicalize(info.sender.as_str())?;
     let mut config: Config = read_config(deps.storage)?;
     let mut state: State = read_state(deps.storage)?;
-    let anc_token: Addr = deps.api.addr_humanize(&config.anchor_token)?;
+    let anc_token: Addr = deps.api.addr_humanize(&config.xdefi_token)?;
 
-    // get gov address by querying anc token minter
-    let gov_addr_raw: CanonicalAddr = deps
-        .api
-        .addr_canonicalize(&query_anc_minter(&deps.querier, anc_token.clone())?)?;
+    // get gov address by querying owner address
+    let gov_addr_raw: CanonicalAddr = state.owner_address.clone();
     if sender_addr_raw != gov_addr_raw {
         return Err(StdError::generic_err("unauthorized"));
     }
@@ -337,7 +360,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
 pub fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
     let state = read_config(deps.storage)?;
     let resp = ConfigResponse {
-        anchor_token: deps.api.addr_humanize(&state.anchor_token)?.to_string(),
+        xdefi_token: deps.api.addr_humanize(&state.xdefi_token)?.to_string(),
         staking_token: deps.api.addr_humanize(&state.staking_token)?.to_string(),
         distribution_schedule: state.distribution_schedule,
     };
@@ -356,6 +379,7 @@ pub fn query_state(deps: Deps, block_height: Option<u64>) -> StdResult<StateResp
         last_distributed: state.last_distributed,
         total_bond_amount: state.total_bond_amount,
         global_reward_index: state.global_reward_index,
+        owner_address: state.owner_address,
     })
 }
 

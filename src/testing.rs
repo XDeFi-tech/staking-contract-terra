@@ -1,21 +1,21 @@
 use crate::contract::{execute, instantiate, query};
 use crate::mock_querier::mock_dependencies;
-use anchor_token::staking::{
+use cosmwasm_std::testing::{mock_env, mock_info};
+use cosmwasm_std::{
+    attr, from_binary, to_binary, Api, CosmosMsg, Decimal, StdError, SubMsg, Uint128, WasmMsg,
+};
+use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
+use xdefi_token::staking::{
     ConfigResponse, Cw20HookMsg, ExecuteMsg, InstantiateMsg, QueryMsg, StakerInfoResponse,
     StateResponse,
 };
-use cosmwasm_std::testing::{mock_env, mock_info};
-use cosmwasm_std::{
-    attr, from_binary, to_binary, CosmosMsg, Decimal, StdError, SubMsg, Uint128, WasmMsg,
-};
-use cw20::{Cw20ExecuteMsg, Cw20ReceiveMsg};
 
 #[test]
 fn proper_initialization() {
     let mut deps = mock_dependencies(&[]);
 
     let msg = InstantiateMsg {
-        anchor_token: "reward0000".to_string(),
+        xdefi_token: "reward0000".to_string(),
         staking_token: "staking0000".to_string(),
         distribution_schedule: vec![(100, 200, Uint128::from(1000000u128))],
     };
@@ -31,7 +31,7 @@ fn proper_initialization() {
     assert_eq!(
         config,
         ConfigResponse {
-            anchor_token: "reward0000".to_string(),
+            xdefi_token: "reward0000".to_string(),
             staking_token: "staking0000".to_string(),
             distribution_schedule: vec![(100, 200, Uint128::from(1000000u128))],
         }
@@ -50,6 +50,7 @@ fn proper_initialization() {
             last_distributed: 12345,
             total_bond_amount: Uint128::zero(),
             global_reward_index: Decimal::zero(),
+            owner_address: state.owner_address.clone()
         }
     );
 }
@@ -59,7 +60,7 @@ fn test_bond_tokens() {
     let mut deps = mock_dependencies(&[]);
 
     let msg = InstantiateMsg {
-        anchor_token: "reward0000".to_string(),
+        xdefi_token: "reward0000".to_string(),
         staking_token: "staking0000".to_string(),
         distribution_schedule: vec![
             (12345, 12345 + 100, Uint128::from(1000000u128)),
@@ -100,21 +101,22 @@ fn test_bond_tokens() {
             bond_amount: Uint128::from(100u128),
         }
     );
-
-    assert_eq!(
-        from_binary::<StateResponse>(
-            &query(
-                deps.as_ref(),
-                mock_env(),
-                QueryMsg::State { block_height: None }
-            )
-            .unwrap()
+    let state = from_binary::<StateResponse>(
+        &query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::State { block_height: None },
         )
         .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        state,
         StateResponse {
             total_bond_amount: Uint128::from(100u128),
             global_reward_index: Decimal::zero(),
             last_distributed: 12345,
+            owner_address: state.owner_address.clone()
         }
     );
 
@@ -148,21 +150,22 @@ fn test_bond_tokens() {
             bond_amount: Uint128::from(200u128),
         }
     );
-
-    assert_eq!(
-        from_binary::<StateResponse>(
-            &query(
-                deps.as_ref(),
-                mock_env(),
-                QueryMsg::State { block_height: None }
-            )
-            .unwrap()
+    let state = from_binary::<StateResponse>(
+        &query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::State { block_height: None },
         )
         .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        state,
         StateResponse {
             total_bond_amount: Uint128::from(200u128),
             global_reward_index: Decimal::from_ratio(1000u128, 1u128),
             last_distributed: 12345 + 10,
+            owner_address: state.owner_address.clone()
         }
     );
 
@@ -186,7 +189,7 @@ fn test_unbond() {
     let mut deps = mock_dependencies(&[]);
 
     let msg = InstantiateMsg {
-        anchor_token: "reward0000".to_string(),
+        xdefi_token: "reward0000".to_string(),
         staking_token: "staking0000".to_string(),
         distribution_schedule: vec![
             (12345, 12345 + 100, Uint128::from(1000000u128)),
@@ -246,7 +249,7 @@ fn test_compute_reward() {
     let mut deps = mock_dependencies(&[]);
 
     let msg = InstantiateMsg {
-        anchor_token: "reward0000".to_string(),
+        xdefi_token: "reward0000".to_string(),
         staking_token: "staking0000".to_string(),
         distribution_schedule: vec![
             (12345, 12345 + 100, Uint128::from(1000000u128)),
@@ -359,7 +362,7 @@ fn test_withdraw() {
     let mut deps = mock_dependencies(&[]);
 
     let msg = InstantiateMsg {
-        anchor_token: "reward0000".to_string(),
+        xdefi_token: "reward0000".to_string(),
         staking_token: "staking0000".to_string(),
         distribution_schedule: vec![
             (12345, 12345 + 100, Uint128::from(1000000u128)),
@@ -407,7 +410,7 @@ fn test_migrate_staking() {
     let mut deps = mock_dependencies(&[]);
 
     let msg = InstantiateMsg {
-        anchor_token: "reward0000".to_string(),
+        xdefi_token: "reward0000".to_string(),
         staking_token: "staking0000".to_string(),
         distribution_schedule: vec![
             (12345, 12345 + 100, Uint128::from(1000000u128)),
@@ -452,8 +455,6 @@ fn test_migrate_staking() {
     // execute migration after 50 blocks
     env.block.height += 50;
 
-    deps.querier.with_anc_minter("gov0000".to_string());
-
     let msg = ExecuteMsg::MigrateStaking {
         new_staking_contract: "newstaking0000".to_string(),
     };
@@ -467,7 +468,7 @@ fn test_migrate_staking() {
     }
 
     // successful attempt
-    let info = mock_info("gov0000", &[]);
+    let info = mock_info("addr0000", &[]);
     let res = execute(deps.as_mut(), env, info, msg).unwrap();
 
     assert_eq!(
@@ -498,12 +499,75 @@ fn test_migrate_staking() {
     assert_eq!(
         config,
         ConfigResponse {
-            anchor_token: "reward0000".to_string(),
+            xdefi_token: "reward0000".to_string(),
             staking_token: "staking0000".to_string(),
             distribution_schedule: vec![
                 (12345, 12345 + 100, Uint128::from(1000000u128)),
                 (12345 + 100, 12345 + 150, Uint128::from(5000000u128)), // slot was modified
             ]
         }
+    );
+}
+
+#[test]
+fn test_change_owner() {
+    let mut deps = mock_dependencies(&[]);
+
+    let msg = InstantiateMsg {
+        xdefi_token: "reward0000".to_string(),
+        staking_token: "staking0000".to_string(),
+        distribution_schedule: vec![
+            (12345, 12345 + 100, Uint128::from(1000000u128)),
+            (12345 + 100, 12345 + 200, Uint128::from(10000000u128)),
+        ],
+    };
+
+    let info = mock_info("addr0000", &[]);
+    let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+    // query state after initialization of contract
+    let res = query(
+        deps.as_ref(),
+        mock_env(),
+        QueryMsg::State { block_height: None },
+    )
+    .unwrap();
+    let state: StateResponse = from_binary(&res).unwrap();
+    assert_eq!(
+        deps.api.addr_canonicalize("addr0000").unwrap(),
+        state.owner_address
+    );
+
+    let msg = ExecuteMsg::ChangeOwner {
+        new_owner_address: "newaddr0000".to_string(),
+    };
+
+    let env = mock_env();
+
+    //we try to change owner with not authorized address : has to fail
+    let info = mock_info("notgov0000", &[]);
+    let res = execute(deps.as_mut(), env.clone(), info, msg.clone());
+    match res {
+        Err(StdError::GenericErr { msg, .. }) => assert_eq!(msg, "unauthorized"),
+        _ => panic!("Must return unauthorized error"),
+    }
+
+    //has to be successful attempt
+    let info = mock_info("addr0000", &[]);
+    let res = execute(deps.as_mut(), env, info, msg).unwrap();
+
+    let state = from_binary::<StateResponse>(
+        &query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::State { block_height: None },
+        )
+        .unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        state.owner_address,
+        deps.api.addr_canonicalize("newaddr0000").unwrap()
     );
 }

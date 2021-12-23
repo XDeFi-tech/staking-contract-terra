@@ -1,11 +1,11 @@
 use std::env::current_dir;
 use std::fs::create_dir_all;
 
-use anchor_token::staking::{
+use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
+use xdefi_token::staking::{
     ConfigResponse, Cw20HookMsg, ExecuteMsg, InstantiateMsg, QueryMsg, StakerInfoResponse,
     StateResponse,
 };
-use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
 fn main() {
     let mut out_dir = current_dir().unwrap();

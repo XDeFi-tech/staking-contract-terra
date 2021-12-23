@@ -11,7 +11,7 @@ static PREFIX_REWARD: &[u8] = b"reward";
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Config {
-    pub anchor_token: CanonicalAddr,
+    pub xdefi_token: CanonicalAddr,
     pub staking_token: CanonicalAddr,
     pub distribution_schedule: Vec<(u64, u64, Uint128)>,
 }
@@ -29,6 +29,7 @@ pub struct State {
     pub last_distributed: u64,
     pub total_bond_amount: Uint128,
     pub global_reward_index: Decimal,
+    pub owner_address: CanonicalAddr,
 }
 
 pub fn store_state(storage: &mut dyn Storage, state: &State) -> StdResult<()> {
