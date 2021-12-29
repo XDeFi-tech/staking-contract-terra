@@ -572,7 +572,6 @@ fn test_change_owner() {
     );
 }
 
-#[test]
 fn test_add_reward_schedule() {
     let mut deps = mock_dependencies(&[]);
 
@@ -853,3 +852,4 @@ fn test_modify_reward_schedule() {
         ]
     );
 }
+

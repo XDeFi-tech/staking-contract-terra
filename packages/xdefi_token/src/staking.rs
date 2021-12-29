@@ -29,7 +29,6 @@ pub enum ExecuteMsg {
     ChangeOwner {
         new_owner_address: String,
     },
-
     AddReward {
         reward_schedule: (u64, u64, Uint128),
     },
@@ -38,6 +37,7 @@ pub enum ExecuteMsg {
         new_emission: Uint128,
         index_schedule: usize,
     },
+
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
