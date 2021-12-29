@@ -141,7 +141,7 @@ pub fn add_reward_schedule(
     }
 
     let mut config: Config = read_config(deps.storage)?;
-
+    let block_height = env.block.height;
     let mut actual_distribution_schedule = config.distribution_schedule.clone();
     let maximum_start_block = actual_distribution_schedule
         .iter()
@@ -151,10 +151,16 @@ pub fn add_reward_schedule(
         .iter()
         .fold(std::u64::MAX, |a, b| a.max(b.1));
 
-    let maximum_block = std::cmp::max(maximum_start_block, maximum_end_block);
-    let reward_schedule_maximum_block = std::cmp::max(reward_schedule.0, reward_schedule.1);
+    let maximum_block = std::cmp::min(maximum_start_block, maximum_end_block);
+    let reward_schedule_minimum_block = std::cmp::min(reward_schedule.0, reward_schedule.1);
 
-    if reward_schedule_maximum_block <= maximum_block {
+    if block_height > reward_schedule_minimum_block {
+        return Err(StdError::generic_err(
+            "cannot add a schedule that was passed already",
+        ));
+    }
+
+    if reward_schedule_minimum_block <= maximum_block {
         return Err(StdError::generic_err(
             "The new reward schedule has to be after the last reward schedule end block",
         ));
