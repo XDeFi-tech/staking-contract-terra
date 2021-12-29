@@ -143,26 +143,12 @@ pub fn add_reward_schedule(
     let mut config: Config = read_config(deps.storage)?;
     let block_height = env.block.height;
     let mut actual_distribution_schedule = config.distribution_schedule.clone();
-    let maximum_start_block = actual_distribution_schedule
-        .iter()
-        .fold(std::u64::MAX, |a, b| a.max(b.0));
 
-    let maximum_end_block = actual_distribution_schedule
-        .iter()
-        .fold(std::u64::MAX, |a, b| a.max(b.1));
-
-    let maximum_block = std::cmp::min(maximum_start_block, maximum_end_block);
     let reward_schedule_minimum_block = std::cmp::min(reward_schedule.0, reward_schedule.1);
 
     if block_height > reward_schedule_minimum_block {
         return Err(StdError::generic_err(
             "cannot add a schedule that was passed already",
-        ));
-    }
-
-    if reward_schedule_minimum_block <= maximum_block {
-        return Err(StdError::generic_err(
-            "The new reward schedule has to be after the last reward schedule end block",
         ));
     }
 
@@ -174,6 +160,17 @@ pub fn add_reward_schedule(
 
     if reward_schedule.2 == Uint128::from(0u128) {
         return Err(StdError::generic_err("Reward has to be greater than 0"));
+    }
+
+    //we finally use that instead of max existing block check on schedule, so we avoid having to migrate the contract if a mistake was done in putting a period too far away
+    for schedule in actual_distribution_schedule.clone() {
+        if reward_schedule.0 >= schedule.0 && reward_schedule.0 <= schedule.1
+            || reward_schedule.1 >= schedule.0 && reward_schedule.1 <= schedule.1
+        {
+            return Err(StdError::generic_err(
+                "The new reward schedule has to be a new period, the period is overtaking an existing upcoming schedule period",
+            ));
+        }
     }
 
     actual_distribution_schedule.push(reward_schedule);
