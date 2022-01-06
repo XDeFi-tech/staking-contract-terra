@@ -29,7 +29,6 @@ pub enum ExecuteMsg {
     ChangeOwner {
         new_owner_address: String,
     },
-
     AddReward {
         reward_schedule: (u64, u64, Uint128),
     },
