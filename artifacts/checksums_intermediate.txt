@@ -1,1 +1,1 @@
-cd78dda8057b8db61972e6851a8c2600a0501bdac087ad6775fcda7b49392a72  ./target/wasm32-unknown-unknown/release/xdefi_staking.wasm
+b5a67e4724e418c3a2e71d7b86621a80c523e8157cde1f6f5e377c7b07287bbc  ./target/wasm32-unknown-unknown/release/xdefi_staking.wasm
