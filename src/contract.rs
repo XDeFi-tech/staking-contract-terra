@@ -59,7 +59,133 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         ExecuteMsg::ChangeOwner { new_owner_address } => {
             change_owner(deps, env, info, new_owner_address)
         }
+        ExecuteMsg::AddReward { reward_schedule } => {
+            add_reward_schedule(deps, env, info, reward_schedule)
+        }
+        ExecuteMsg::ModifyReward {
+            new_emission,
+            index_schedule,
+        } => modify_reward_schedule(deps, env, info, new_emission, index_schedule),
     }
+}
+
+pub fn modify_reward_schedule(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    new_emission: Uint128,
+    index_schedule: usize,
+) -> StdResult<Response> {
+    let sender_addr_raw: CanonicalAddr = deps.api.addr_canonicalize(info.sender.as_str())?;
+    let state: State = read_state(deps.storage)?;
+
+    // get gov address by querying owner address
+    let gov_addr_raw: CanonicalAddr = state.owner_address;
+    if sender_addr_raw != gov_addr_raw {
+        return Err(StdError::generic_err("unauthorized"));
+    }
+
+    let mut config: Config = read_config(deps.storage)?;
+
+    let block_height = env.block.height;
+
+    let mut actual_distribution_schedule = config.distribution_schedule.clone();
+
+    if index_schedule >= actual_distribution_schedule.len() {
+        return Err(StdError::generic_err("index out of schedule array range"));
+    }
+
+    let mut to_modify_schedule = actual_distribution_schedule[index_schedule];
+
+    let reward_schedule_minimum_block = std::cmp::min(to_modify_schedule.0, to_modify_schedule.1);
+
+    if block_height > reward_schedule_minimum_block {
+        return Err(StdError::generic_err(
+            "cannot modify a schedule that was passed already",
+        ));
+    }
+
+    if new_emission == Uint128::from(0u128) {
+        return Err(StdError::generic_err("Reward has to be greater than 0"));
+    }
+
+    *&mut to_modify_schedule.2 = new_emission;
+
+    *&mut actual_distribution_schedule[index_schedule] = to_modify_schedule;
+
+    *&mut config.distribution_schedule = actual_distribution_schedule.clone();
+
+    // update config
+    store_config(deps.storage, &config)?;
+
+    Ok(Response::new().add_attributes(vec![
+        ("action", "modify_reward_schedule"),
+        ("index_schedule", &index_schedule.to_string()),
+        ("new_emission", &new_emission.to_string()),
+    ]))
+}
+
+pub fn add_reward_schedule(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    reward_schedule: (u64, u64, Uint128),
+) -> StdResult<Response> {
+    let sender_addr_raw: CanonicalAddr = deps.api.addr_canonicalize(info.sender.as_str())?;
+    let state: State = read_state(deps.storage)?;
+
+    // get gov address by querying owner address
+    let gov_addr_raw: CanonicalAddr = state.owner_address;
+    if sender_addr_raw != gov_addr_raw {
+        return Err(StdError::generic_err("unauthorized"));
+    }
+
+    let mut config: Config = read_config(deps.storage)?;
+    let block_height = env.block.height;
+    let mut actual_distribution_schedule = config.distribution_schedule.clone();
+
+    let reward_schedule_minimum_block = std::cmp::min(reward_schedule.0, reward_schedule.1);
+
+    if block_height > reward_schedule_minimum_block {
+        return Err(StdError::generic_err(
+            "cannot add a schedule that was passed already",
+        ));
+    }
+
+    if reward_schedule.0 >= reward_schedule.1 {
+        return Err(StdError::generic_err(
+            "End schedule block has to be greater than beginning block",
+        ));
+    }
+
+    if reward_schedule.2 == Uint128::from(0u128) {
+        return Err(StdError::generic_err("Reward has to be greater than 0"));
+    }
+
+    //we finally use that instead of max existing block check on schedule, so we avoid having to migrate the contract if a mistake was done in putting a period too far away
+    for schedule in actual_distribution_schedule.clone() {
+        if reward_schedule.0 >= schedule.0 && reward_schedule.0 <= schedule.1
+            || reward_schedule.1 >= schedule.0 && reward_schedule.1 <= schedule.1
+        {
+            return Err(StdError::generic_err(
+                "The new reward schedule has to be a new period, the period is overtaking an existing upcoming schedule period",
+            ));
+        }
+    }
+
+    actual_distribution_schedule.push(reward_schedule);
+
+    *&mut config.distribution_schedule = actual_distribution_schedule.clone();
+
+    // update config
+    store_config(deps.storage, &config)?;
+
+    Ok(Response::new().add_attributes(vec![
+        ("action", "add_reward_schedule"),
+        ("starting_block", &reward_schedule.0.to_string()),
+        ("end_block", &reward_schedule.1.to_string()),
+        ("total_emission", &reward_schedule.2.to_string()),
+    ]))
 }
 
 pub fn receive_cw20(

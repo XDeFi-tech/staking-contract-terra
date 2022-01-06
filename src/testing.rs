@@ -571,3 +571,285 @@ fn test_change_owner() {
         deps.api.addr_canonicalize("newaddr0000").unwrap()
     );
 }
+
+fn test_add_reward_schedule() {
+    let mut deps = mock_dependencies(&[]);
+
+    let msg = InstantiateMsg {
+        xdefi_token: "reward0000".to_string(),
+        staking_token: "staking0000".to_string(),
+        distribution_schedule: vec![
+            (12345, 12345 + 100, Uint128::from(1000000u128)),
+            (12345 + 100, 12345 + 200, Uint128::from(10000000u128)),
+        ],
+    };
+
+    let info = mock_info("addr0000", &[]);
+    let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+    // query state after initialization of contract
+    let res = query(
+        deps.as_ref(),
+        mock_env(),
+        QueryMsg::State { block_height: None },
+    )
+    .unwrap();
+    let state: StateResponse = from_binary(&res).unwrap();
+    assert_eq!(
+        deps.api.addr_canonicalize("addr0000").unwrap(),
+        state.owner_address
+    );
+
+    let msg = ExecuteMsg::AddReward {
+        reward_schedule: (2000, 2500, Uint128::from(1000000u128)),
+    };
+
+    let mut env = mock_env();
+
+    //we try to change owner with not authorized address : has to fail
+    let info = mock_info("notgov0000", &[]);
+    let res = execute(deps.as_mut(), env.clone(), info, msg.clone());
+    match res {
+        Err(StdError::GenericErr { msg, .. }) => assert_eq!(msg, "unauthorized"),
+        _ => panic!("Must return unauthorized error"),
+    }
+
+    //we try to put a reward that was passed already
+    let info = mock_info("addr0000", &[]);
+    let res = execute(deps.as_mut(), env.clone(), info, msg.clone());
+    env.block.height += 2500;
+    match res {
+        Err(StdError::GenericErr { msg, .. }) => {
+            assert_eq!(msg, "cannot add a schedule that was passed already")
+        }
+        _ => panic!("Must return : cannot add a schedule that was passed already"),
+    }
+
+    //we try to put a reward with 0 emission
+    let msg = ExecuteMsg::AddReward {
+        reward_schedule: (123450 + 300, 123450 + 700, Uint128::from(0u128)),
+    };
+
+    let info = mock_info("addr0000", &[]);
+    let res = execute(deps.as_mut(), env.clone(), info, msg.clone());
+
+    match res {
+        Err(StdError::GenericErr { msg, .. }) => {
+            assert_eq!(msg, "Reward has to be greater than 0")
+        }
+        _ => panic!("Must return : Reward has to be greater than 0"),
+    }
+
+    //we try to put a reward with beginning block > end block
+    let msg = ExecuteMsg::AddReward {
+        reward_schedule: (1234500 + 700, 1234500 + 300, Uint128::from(1000000u128)),
+    };
+
+    let info = mock_info("addr0000", &[]);
+    let res = execute(deps.as_mut(), env.clone(), info, msg.clone());
+
+    match res {
+        Err(StdError::GenericErr { msg, .. }) => {
+            assert_eq!(
+                msg,
+                "End schedule block has to be greater than beginning block"
+            )
+        }
+        _ => panic!("Must return : End schedule block has to be greater than beginning block"),
+    }
+
+    //we try to put a reward in same period as an existing one
+    env.block.height -= 2500;
+    let msg = ExecuteMsg::AddReward {
+        reward_schedule: (12345 + 50, 1234500 + 150, Uint128::from(1000000u128)),
+    };
+
+    let info = mock_info("addr0000", &[]);
+    let res = execute(deps.as_mut(), env.clone(), info, msg.clone());
+
+    match res {
+        Err(StdError::GenericErr { msg, .. }) => {
+            assert_eq!(
+                msg,
+                "The new reward schedule has to be a new period, the period is overtaking an existing upcoming schedule period"
+            )
+        }
+        _ => panic!("Must return : The new reward schedule has to be a new period, the period is overtaking an existing upcoming schedule period"),
+    }
+
+    let msg = ExecuteMsg::AddReward {
+        reward_schedule: (12345 + 199, 1234500 + 2000, Uint128::from(1000000u128)),
+    };
+
+    let info = mock_info("addr0000", &[]);
+    let res = execute(deps.as_mut(), env.clone(), info, msg.clone());
+
+    match res {
+        Err(StdError::GenericErr { msg, .. }) => {
+            assert_eq!(
+                msg,
+                "The new reward schedule has to be a new period, the period is overtaking an existing upcoming schedule period"
+            )
+        }
+        _ => panic!("Must return : The new reward schedule has to be a new period, the period is overtaking an existing upcoming schedule period"),
+    }
+
+    let msg = ExecuteMsg::AddReward {
+        reward_schedule: (12345 + 175, 1234500 + 185, Uint128::from(1000000u128)),
+    };
+
+    let info = mock_info("addr0000", &[]);
+    let res = execute(deps.as_mut(), env.clone(), info, msg.clone());
+
+    match res {
+        Err(StdError::GenericErr { msg, .. }) => {
+            assert_eq!(
+                msg,
+                "The new reward schedule has to be a new period, the period is overtaking an existing upcoming schedule period"
+            )
+        }
+        _ => panic!("Must return : The new reward schedule has to be a new period, the period is overtaking an existing upcoming schedule period"),
+    }
+
+    //has to be successful attempt
+    let msg = ExecuteMsg::AddReward {
+        reward_schedule: (
+            12345 + 201,
+            12345 + 201 + 500,
+            Uint128::from(10000000000u128),
+        ),
+    };
+    let env = mock_env();
+    let info = mock_info("addr0000", &[]);
+    let res = execute(deps.as_mut(), env, info, msg).unwrap();
+
+    let config = from_binary::<ConfigResponse>(
+        &query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        config.distribution_schedule,
+        vec![
+            (12345, 12345 + 100, Uint128::from(1000000u128)),
+            (12345 + 100, 12345 + 200, Uint128::from(10000000u128)),
+            (
+                12345 + 201,
+                12345 + 201 + 500,
+                Uint128::from(10000000000u128)
+            ),
+        ]
+    );
+}
+
+#[test]
+fn test_modify_reward_schedule() {
+    let mut deps = mock_dependencies(&[]);
+
+    let msg = InstantiateMsg {
+        xdefi_token: "reward0000".to_string(),
+        staking_token: "staking0000".to_string(),
+        distribution_schedule: vec![
+            (12345, 12345 + 100, Uint128::from(1000000u128)),
+            (12345 + 100, 12345 + 200, Uint128::from(10000000u128)),
+        ],
+    };
+
+    let info = mock_info("addr0000", &[]);
+    let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+    // query state after initialization of contract
+    let res = query(
+        deps.as_ref(),
+        mock_env(),
+        QueryMsg::State { block_height: None },
+    )
+    .unwrap();
+    let state: StateResponse = from_binary(&res).unwrap();
+    assert_eq!(
+        deps.api.addr_canonicalize("addr0000").unwrap(),
+        state.owner_address
+    );
+
+    let msg = ExecuteMsg::ModifyReward {
+        new_emission: Uint128::from(2000000u128),
+        index_schedule: 1,
+    };
+
+    let mut env = mock_env();
+
+    //we try to change owner with not authorized address : has to fail
+    let info = mock_info("notgov0000", &[]);
+    let res = execute(deps.as_mut(), env.clone(), info, msg.clone());
+    match res {
+        Err(StdError::GenericErr { msg, .. }) => assert_eq!(msg, "unauthorized"),
+        _ => panic!("Must return unauthorized error"),
+    }
+
+    //we try to modify a passed reward schedule
+    env.block.height += 2500;
+    let info = mock_info("addr0000", &[]);
+    let res = execute(deps.as_mut(), env.clone(), info, msg.clone());
+
+    match res {
+        Err(StdError::GenericErr { msg, .. }) => {
+            assert_eq!(msg, "cannot modify a schedule that was passed already")
+        }
+        _ => panic!("Must return : cannot modify a schedule that was passed already"),
+    }
+    env.block.height -= 2500;
+
+    //we try to modify with an outlier index value
+    let msg = ExecuteMsg::ModifyReward {
+        new_emission: Uint128::from(2000000u128),
+        index_schedule: 100,
+    };
+
+    let info = mock_info("addr0000", &[]);
+    let res = execute(deps.as_mut(), env.clone(), info, msg.clone());
+
+    match res {
+        Err(StdError::GenericErr { msg, .. }) => {
+            assert_eq!(msg, "index out of schedule array range")
+        }
+        _ => panic!("Must return : index out of schedule array range"),
+    }
+
+    //we try to nullify a reward value
+    let msg = ExecuteMsg::ModifyReward {
+        new_emission: Uint128::from(0u128),
+        index_schedule: 1,
+    };
+
+    let info = mock_info("addr0000", &[]);
+    let res = execute(deps.as_mut(), env.clone(), info, msg.clone());
+
+    match res {
+        Err(StdError::GenericErr { msg, .. }) => {
+            assert_eq!(msg, "Reward has to be greater than 0")
+        }
+        _ => panic!("Must return : Reward has to be greater than 0"),
+    }
+
+    //successful attempt
+    let msg = ExecuteMsg::ModifyReward {
+        new_emission: Uint128::from(20000000u128),
+        index_schedule: 1,
+    };
+
+    let info = mock_info("addr0000", &[]);
+    let res = execute(deps.as_mut(), env.clone(), info, msg.clone());
+
+    let config = from_binary::<ConfigResponse>(
+        &query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        config.distribution_schedule,
+        vec![
+            (12345, 12345 + 100, Uint128::from(1000000u128)),
+            (12345 + 100, 12345 + 200, Uint128::from(20000000u128)),
+        ]
+    );
+}
+
