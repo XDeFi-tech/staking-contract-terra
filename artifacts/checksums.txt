@@ -1,1 +1,5 @@
+<<<<<<< HEAD
 74382764849b8039311abd86de25d8132ecf281be85fb5a873d86c60d66dc165  xdefi_staking.wasm
+=======
+07a18c5329fc5f5016a88798dc54cc13c72f06c9a8df4ac1c00d1535968df31f  xdefi_staking.wasm
+>>>>>>> 073d9944f18de4cf7de2ec30704c0ec444ea6c26

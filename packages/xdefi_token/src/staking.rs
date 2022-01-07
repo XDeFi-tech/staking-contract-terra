@@ -32,6 +32,11 @@ pub enum ExecuteMsg {
     AddReward {
         reward_schedule: (u64, u64, Uint128),
     },
+
+    ModifyReward {
+        new_emission: Uint128,
+        index_schedule: usize,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
